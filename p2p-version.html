@@ -1,0 +1,1847 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>临时群聊 - 纯P2P版本</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- PeerJS for WebRTC -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        dark: '#1F2937',
+                        light: '#F3F4F6',
+                        accent: '#8B5CF6'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'pulse-light': 'pulseLight 2s infinite'
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' }
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' }
+                        },
+                        pulseLight: {
+                            '0%, 100%': { opacity: '1' },
+                            '50%': { opacity: '0.7' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .glass {
+                background: rgba(255, 255, 255, 0.25);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .transition-all-300 {
+                transition: all 0.3s ease;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        }
+    </style>
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        
+        .message-bubble {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            margin-bottom: 10px;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .message-self {
+            background-color: #3B82F6;
+            color: white;
+            border-bottom-right-radius: 4px;
+            margin-left: auto;
+        }
+        
+        .message-other {
+            background-color: #E5E7EB;
+            color: #1F2937;
+            border-bottom-left-radius: 4px;
+            margin-right: auto;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            background-color: #000;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .video-element {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        
+        @media (max-width: 640px) {
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .message-bubble {
+                max-width: 90%;
+            }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .room-id-input {
+            letter-spacing: 0.2em;
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        
+        .qr-code-container {
+            max-width: 200px;
+            margin: 0 auto;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signal-exchange {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border-radius: 20px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
+        }
+        
+        .input-focus {
+            transition: all 0.3s ease;
+        }
+        
+        .input-focus:focus {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            transform: translateY(-1px);
+        }
+        
+        .feature-icon {
+            background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+            color: white;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin: 0 auto 16px;
+        }
+    </style>
+</head>
+<body class="font-sans">
+    <!-- 加载动画 -->
+    <div id="loading-screen" class="fixed inset-0 flex items-center justify-center bg-white z-50">
+        <div class="text-center">
+            <div class="inline-block w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <p class="mt-4 text-lg text-primary font-medium">正在加载...</p>
+        </div>
+    </div>
+
+    <!-- 主容器 -->
+    <div id="app" class="max-w-md mx-auto h-screen bg-white shadow-lg overflow-hidden flex flex-col hidden">
+        <!-- 登录/命名页面 -->
+        <div id="login-screen" class="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in">
+            <div class="w-full max-w-xs">
+                <div class="text-center mb-8">
+                    <div class="inline-block p-3 bg-primary bg-opacity-10 rounded-full mb-4">
+                        <i class="fa fa-comments text-4xl text-primary"></i>
+                    </div>
+                    <h1 class="text-4xl font-bold text-dark mb-2">临时群聊</h1>
+                    <p class="text-gray-600">纯P2P版本 - 无需服务器</p>
+                    
+                    <!-- 特色功能展示 -->
+                    <div class="grid grid-cols-3 gap-4 mt-8">
+                        <div class="text-center">
+                            <div class="feature-icon">
+                                <i class="fa fa-wifi"></i>
+                            </div>
+                            <p class="text-xs text-gray-600">跨网络</p>
+                        </div>
+                        <div class="text-center">
+                            <div class="feature-icon">
+                                <i class="fa fa-video-camera"></i>
+                            </div>
+                            <p class="text-xs text-gray-600">视频通话</p>
+                        </div>
+                        <div class="text-center">
+                            <div class="feature-icon">
+                                <i class="fa fa-lock"></i>
+                            </div>
+                            <p class="text-xs text-gray-600">隐私保护</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="glass-card p-6 space-y-4">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">输入您的用户名</label>
+                        <input type="text" id="username" class="w-full px-4 py-3 border border-gray-300 rounded-lg input-focus" placeholder="例如：小明" maxlength="20" required>
+                    </div>
+                    
+                    <button id="enter-btn" class="btn-primary w-full text-white py-3 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                        进入应用
+                    </button>
+                </div>
+                
+                <p class="text-center text-gray-500 text-sm mt-6">
+                    🔒 所有通信均为端到端加密<br>
+                    📱 支持手机、平板和电脑
+                </p>
+            </div>
+        </div>
+        
+        <!-- 群聊创建/加入页面 -->
+        <div id="room-screen" class="flex-1 flex flex-col items-center justify-center p-6 hidden animate-fade-in">
+            <div class="w-full max-w-xs">
+                <div class="text-center mb-6">
+                    <div class="inline-block p-2 bg-primary bg-opacity-10 rounded-full mb-3">
+                        <i class="fa fa-users text-2xl text-primary"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-dark mb-2">创建或加入群聊</h2>
+                    <p class="text-gray-600">请输入4位数字作为群聊密码</p>
+                </div>
+                
+                <div class="glass-card p-6 space-y-4">
+                    <div>
+                        <input type="tel" id="room-id" class="room-id-input w-full px-4 py-3 border border-gray-300 rounded-lg input-focus" placeholder="0000" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" required>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="create-room-btn" class="btn-primary text-white py-3 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                            创建群聊
+                        </button>
+                        
+                        <button id="join-room-btn" class="btn-secondary text-white py-3 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary">
+                            加入群聊
+                        </button>
+                    </div>
+                    
+                    <button id="back-to-login-btn" class="w-full text-gray-600 py-2 font-medium hover:text-gray-800 transition-all-300 focus:outline-none">
+                        <i class="fa fa-arrow-left mr-1"></i> 返回
+                    </button>
+                </div>
+                
+                <div class="mt-6 bg-white bg-opacity-80 rounded-lg p-4 text-sm text-gray-600">
+                    <div class="flex items-start mb-2">
+                        <i class="fa fa-info-circle text-primary mt-1 mr-2"></i>
+                        <span>群聊密码用于识别不同的聊天房间，请与朋友分享相同的密码。</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 信令交换页面 -->
+        <div id="signal-screen" class="flex-1 flex flex-col items-center justify-center p-6 hidden animate-fade-in">
+            <div class="w-full max-w-md">
+                <div class="text-center mb-6">
+                    <div class="inline-block p-2 bg-accent bg-opacity-10 rounded-full mb-3">
+                        <i class="fa fa-exchange text-2xl text-accent"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-dark mb-2" id="signal-title">交换连接信息</h2>
+                    <p class="text-gray-600" id="signal-subtitle">请按照以下步骤操作</p>
+                </div>
+                
+                <div class="glass-card p-6 space-y-4">
+                    <!-- 创建者看到的内容 -->
+                    <div id="creator-view" class="hidden">
+                        <div class="mb-6">
+                            <h3 class="text-lg font-medium text-dark mb-3 flex items-center">
+                                <i class="fa fa-share-alt text-primary mr-2"></i>
+                                分享房间链接
+                            </h3>
+                            <div class="qr-code-container mb-4">
+                                <img id="room-qr-code" src="" alt="房间二维码" class="w-full">
+                            </div>
+                            <div class="flex">
+                                <input type="text" id="room-link" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg input-focus" readonly>
+                                <button id="copy-link-btn" class="btn-primary text-white px-3 py-2 rounded-r-lg focus:outline-none">
+                                    <i class="fa fa-copy"></i>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">复制上面的链接或扫描二维码邀请朋友加入</p>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h3 class="text-lg font-medium text-dark mb-3 flex items-center">
+                                <i class="fa fa-clock-o text-primary mr-2"></i>
+                                等待其他人加入...
+                            </h3>
+                            <div class="text-center py-6 bg-gray-50 rounded-lg">
+                                <div class="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
+                                <p class="text-gray-600 font-medium">房间ID: <span id="waiting-room-id" class="text-primary font-bold"></span></p>
+                                <p class="text-sm text-gray-500 mt-3">当其他人加入时，您将看到他们的连接信息<br>连接建立后将自动进入群聊</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 加入者看到的内容 -->
+                    <div id="joiner-view" class="hidden">
+                        <div class="mb-6">
+                            <h3 class="text-lg font-medium text-dark mb-3 flex items-center">
+                                <i class="fa fa-paste text-secondary mr-2"></i>
+                                步骤1: 粘贴创建者的连接信息
+                            </h3>
+                            <textarea id="creator-signal" class="w-full px-3 py-3 border border-gray-300 rounded-lg input-focus signal-exchange" placeholder="请粘贴创建者分享的连接信息..." rows="4"></textarea>
+                            <button id="connect-to-creator-btn" class="btn-primary w-full text-white py-3 rounded-lg font-medium mt-3 focus:outline-none">
+                                连接到创建者
+                            </button>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h3 class="text-lg font-medium text-dark mb-3 flex items-center">
+                                <i class="fa fa-code text-secondary mr-2"></i>
+                                步骤2: 分享您的连接信息
+                            </h3>
+                            <textarea id="joiner-signal" class="w-full px-3 py-3 border border-gray-300 rounded-lg input-focus signal-exchange bg-gray-50" readonly rows="4"></textarea>
+                            <button id="copy-signal-btn" class="btn-secondary w-full text-white py-3 rounded-lg font-medium mt-3 focus:outline-none">
+                                复制连接信息
+                            </button>
+                            <p class="text-xs text-gray-500 mt-2">复制上面的连接信息并发送给创建者</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 等待连接完成 -->
+                    <div id="connecting-view" class="hidden">
+                        <div class="text-center py-6">
+                            <div class="inline-block w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                            <p class="text-gray-700 font-medium">正在建立P2P连接...</p>
+                            <p class="text-sm text-gray-500 mt-3">请稍候，连接建立后将自动进入群聊<br>这可能需要几秒钟时间</p>
+                        </div>
+                    </div>
+                    
+                    <button id="cancel-signal-btn" class="w-full text-gray-600 py-2 font-medium hover:text-gray-800 transition-all-300 focus:outline-none">
+                        <i class="fa fa-times mr-1"></i> 取消
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 聊天主界面 -->
+        <div id="chat-screen" class="flex-1 flex flex-col hidden animate-fade-in">
+            <!-- 顶部导航栏 -->
+            <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
+                <div class="flex items-center">
+                    <div class="bg-primary text-white rounded-full w-8 h-8 flex items-center justify-center mr-2">
+                        <i class="fa fa-comments"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-medium text-dark">群聊 <span id="current-room-id" class="text-primary"></span></h3>
+                        <div class="flex items-center text-xs text-gray-500">
+                            <span class="pulse-dot inline-block w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                            <span id="online-count">0</span> 人在线
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-3">
+                    <button id="video-call-btn" class="bg-secondary text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-green-600 transition-all-300 focus:outline-none">
+                        <i class="fa fa-video-camera"></i>
+                    </button>
+                    
+                    <button id="settings-btn" class="text-gray-500 rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-all-300 focus:outline-none">
+                        <i class="fa fa-cog"></i>
+                    </button>
+                </div>
+            </header>
+            
+            <!-- 消息区域 -->
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide" style="background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);">
+                <!-- 欢迎消息 -->
+                <div class="flex justify-center">
+                    <div class="bg-blue-50 text-blue-700 text-xs px-4 py-2 rounded-full">
+                        欢迎来到群聊！您可以开始发送消息或发起视频通话
+                    </div>
+                </div>
+                
+                <!-- 消息将通过JavaScript动态添加 -->
+            </div>
+            
+            <!-- 底部输入区域 -->
+            <footer class="bg-white border-t border-gray-200 p-3 shadow-sm">
+                <div class="flex items-center space-x-2">
+                    <input type="text" id="message-input" class="flex-1 px-4 py-2 border border-gray-300 rounded-full input-focus" placeholder="输入消息...">
+                    
+                    <button id="send-message-btn" class="btn-primary text-white rounded-full w-10 h-10 flex items-center justify-center focus:outline-none">
+                        <i class="fa fa-paper-plane"></i>
+                    </button>
+                </div>
+            </footer>
+        </div>
+        
+        <!-- 视频通话界面 -->
+        <div id="video-screen" class="fixed inset-0 bg-dark z-40 hidden animate-fade-in">
+            <!-- 顶部导航栏 -->
+            <header class="bg-dark border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center">
+                    <div class="bg-secondary text-white rounded-full w-8 h-8 flex items-center justify-center mr-2">
+                        <i class="fa fa-video-camera"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-medium text-white">视频通话</h3>
+                        <p class="text-xs text-gray-400" id="call-status">连接中...</p>
+                    </div>
+                </div>
+                
+                <button id="end-call-btn" class="btn-danger text-white rounded-full w-10 h-10 flex items-center justify-center focus:outline-none">
+                    <i class="fa fa-phone"></i>
+                </button>
+            </header>
+            
+            <!-- 视频网格 -->
+            <div id="video-grid" class="flex-1 p-4 overflow-y-auto video-grid">
+                <!-- 视频元素将通过JavaScript动态添加 -->
+            </div>
+            
+            <!-- 底部控制栏 -->
+            <footer class="bg-dark border-t border-gray-700 p-4 flex justify-center items-center space-x-6">
+                <button id="toggle-mic-btn" class="bg-gray-700 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-gray-600 transition-all-300 focus:outline-none">
+                    <i class="fa fa-microphone"></i>
+                </button>
+                
+                <button id="toggle-video-btn" class="bg-gray-700 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-gray-600 transition-all-300 focus:outline-none">
+                    <i class="fa fa-video-camera"></i>
+                </button>
+                
+                <button id="toggle-screen-btn" class="bg-gray-700 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-gray-600 transition-all-300 focus:outline-none">
+                    <i class="fa fa-desktop"></i>
+                </button>
+            </footer>
+        </div>
+        
+        <!-- 设置菜单 -->
+        <div id="settings-menu" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden">
+            <div class="absolute right-0 top-0 bottom-0 w-64 bg-white shadow-lg transform transition-transform duration-300 translate-x-full" id="settings-panel">
+                <div class="p-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-medium text-dark">设置</h3>
+                        <button id="close-settings-btn" class="text-gray-500 hover:text-gray-700 transition-all-300 focus:outline-none">
+                            <i class="fa fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="p-4">
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-1">当前用户名</p>
+                        <p class="font-medium text-dark" id="current-username"></p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-1">当前群聊ID</p>
+                        <p class="font-medium text-dark" id="current-room-display"></p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="new-username" class="block text-sm font-medium text-gray-700 mb-1">修改用户名</label>
+                        <input type="text" id="new-username" class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus" placeholder="输入新用户名" maxlength="20">
+                    </div>
+                    
+                    <button id="update-username-btn" class="btn-primary w-full text-white py-2 rounded-lg font-medium focus:outline-none">
+                        更新用户名
+                    </button>
+                    
+                    <hr class="my-4 border-gray-200">
+                    
+                    <div class="mb-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">关于本应用</h4>
+                        <p class="text-xs text-gray-600">
+                            这是一个纯P2P的临时群聊应用，所有通信均通过WebRTC直接进行，不经过任何服务器。
+                        </p>
+                    </div>
+                    
+                    <button id="leave-room-btn" class="w-full text-red-600 py-2 font-medium hover:text-red-700 transition-all-300 focus:outline-none">
+                        离开群聊
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 通知提示 -->
+        <div id="notification" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-dark text-white px-4 py-2 rounded-lg shadow-lg z-50 hidden animate-fade-in">
+            <p id="notification-text"></p>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentUser = {
+            id: null,
+            name: ''
+        };
+        let currentRoomId = '';
+        let peer = null;
+        let connections = {};
+        let localStream = null;
+        let isInCall = false;
+        let isMicOn = true;
+        let isVideoOn = true;
+        let isScreenSharing = false;
+        let screenStream = null;
+        let isRoomCreator = false;
+        let pendingConnections = {};
+        
+        // DOM元素
+        const loadingScreen = document.getElementById('loading-screen');
+        const app = document.getElementById('app');
+        const loginScreen = document.getElementById('login-screen');
+        const roomScreen = document.getElementById('room-screen');
+        const signalScreen = document.getElementById('signal-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const videoScreen = document.getElementById('video-screen');
+        const settingsMenu = document.getElementById('settings-menu');
+        const settingsPanel = document.getElementById('settings-panel');
+        const notification = document.getElementById('notification');
+        const notificationText = document.getElementById('notification-text');
+        
+        // 用户名和群聊相关元素
+        const usernameInput = document.getElementById('username');
+        const enterBtn = document.getElementById('enter-btn');
+        const roomIdInput = document.getElementById('room-id');
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        const backToLoginBtn = document.getElementById('back-to-login-btn');
+        const currentRoomIdDisplay = document.getElementById('current-room-id');
+        const currentUsernameDisplay = document.getElementById('current-username');
+        const currentRoomDisplay = document.getElementById('current-room-display');
+        const newUsernameInput = document.getElementById('new-username');
+        const updateUsernameBtn = document.getElementById('update-username-btn');
+        const leaveRoomBtn = document.getElementById('leave-room-btn');
+        
+        // 信令交换相关元素
+        const signalTitle = document.getElementById('signal-title');
+        const signalSubtitle = document.getElementById('signal-subtitle');
+        const creatorView = document.getElementById('creator-view');
+        const joinerView = document.getElementById('joiner-view');
+        const connectingView = document.getElementById('connecting-view');
+        const roomQrCode = document.getElementById('room-qr-code');
+        const roomLink = document.getElementById('room-link');
+        const copyLinkBtn = document.getElementById('copy-link-btn');
+        const waitingRoomId = document.getElementById('waiting-room-id');
+        const creatorSignal = document.getElementById('creator-signal');
+        const connectToCreatorBtn = document.getElementById('connect-to-creator-btn');
+        const joinerSignal = document.getElementById('joiner-signal');
+        const copySignalBtn = document.getElementById('copy-signal-btn');
+        const cancelSignalBtn = document.getElementById('cancel-signal-btn');
+        
+        // 聊天相关元素
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendMessageBtn = document.getElementById('send-message-btn');
+        const onlineCountDisplay = document.getElementById('online-count');
+        
+        // 视频通话相关元素
+        const videoCallBtn = document.getElementById('video-call-btn');
+        const endCallBtn = document.getElementById('end-call-btn');
+        const toggleMicBtn = document.getElementById('toggle-mic-btn');
+        const toggleVideoBtn = document.getElementById('toggle-video-btn');
+        const toggleScreenBtn = document.getElementById('toggle-screen-btn');
+        const videoGrid = document.getElementById('video-grid');
+        const callStatus = document.getElementById('call-status');
+        
+        // 设置相关元素
+        const settingsBtn = document.getElementById('settings-btn');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            // 模拟加载过程
+            setTimeout(() => {
+                loadingScreen.classList.add('hidden');
+                app.classList.remove('hidden');
+                loginScreen.classList.remove('hidden');
+            }, 1500);
+            
+            // 事件监听
+            setupEventListeners();
+            
+            // 检查URL参数
+            checkUrlParams();
+            
+            // 检查本地存储中的用户信息
+            checkLocalStorage();
+        });
+        
+        // 检查URL参数
+        function checkUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+            const join = urlParams.get('join');
+            
+            if (roomId) {
+                roomIdInput.value = roomId;
+                if (join === 'true') {
+                    // 延迟执行，确保DOM完全加载
+                    setTimeout(() => {
+                        usernameInput.value = '访客' + Math.floor(Math.random() * 1000);
+                        handleEnterApp(true);
+                    }, 500);
+                }
+            }
+        }
+        
+        // 设置事件监听
+        function setupEventListeners() {
+            // 登录/命名页面
+            enterBtn.addEventListener('click', () => handleEnterApp(false));
+            usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleEnterApp(false);
+            });
+            
+            // 群聊创建/加入页面
+            createRoomBtn.addEventListener('click', handleCreateRoom);
+            joinRoomBtn.addEventListener('click', handleJoinRoom);
+            backToLoginBtn.addEventListener('click', handleBackToLogin);
+            roomIdInput.addEventListener('input', formatRoomIdInput);
+            roomIdInput.addEventListener('keypress', (e) => {
+                // 只允许输入数字
+                if (!/^\d$/.test(e.key) && e.key !== 'Backspace') {
+                    e.preventDefault();
+                }
+            });
+            
+            // 信令交换页面
+            copyLinkBtn.addEventListener('click', () => copyToClipboard(roomLink.value));
+            connectToCreatorBtn.addEventListener('click', handleConnectToCreator);
+            copySignalBtn.addEventListener('click', () => copyToClipboard(joinerSignal.value));
+            cancelSignalBtn.addEventListener('click', handleCancelSignal);
+            
+            // 聊天界面
+            sendMessageBtn.addEventListener('click', handleSendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            });
+            
+            // 视频通话
+            videoCallBtn.addEventListener('click', handleStartVideoCall);
+            endCallBtn.addEventListener('click', handleEndCall);
+            toggleMicBtn.addEventListener('click', handleToggleMic);
+            toggleVideoBtn.addEventListener('click', handleToggleVideo);
+            toggleScreenBtn.addEventListener('click', handleToggleScreenShare);
+            
+            // 设置菜单
+            settingsBtn.addEventListener('click', handleOpenSettings);
+            closeSettingsBtn.addEventListener('click', handleCloseSettings);
+            updateUsernameBtn.addEventListener('click', handleUpdateUsername);
+            leaveRoomBtn.addEventListener('click', handleLeaveRoom);
+            
+            // 点击设置菜单外部关闭
+            settingsMenu.addEventListener('click', (e) => {
+                if (e.target === settingsMenu) {
+                    handleCloseSettings();
+                }
+            });
+            
+            // 点击视频通话界面外部关闭设置菜单
+            videoScreen.addEventListener('click', () => {
+                if (!settingsPanel.classList.contains('translate-x-full')) {
+                    handleCloseSettings();
+                }
+            });
+        }
+        
+        // 检查本地存储
+        function checkLocalStorage() {
+            const savedUser = localStorage.getItem('tempchat_user');
+            if (savedUser) {
+                try {
+                    const userData = JSON.parse(savedUser);
+                    currentUser = userData;
+                    usernameInput.value = userData.name;
+                } catch (e) {
+                    console.error('Failed to parse saved user data:', e);
+                }
+            }
+            
+            const savedRoom = localStorage.getItem('tempchat_room');
+            if (savedRoom) {
+                try {
+                    roomIdInput.value = savedRoom;
+                } catch (e) {
+                    console.error('Failed to parse saved room data:', e);
+                }
+            }
+        }
+        
+        // 处理进入应用
+        function handleEnterApp(skipLogin) {
+            const username = usernameInput.value.trim();
+            if (!username && !skipLogin) {
+                showNotification('请输入用户名');
+                return;
+            }
+            
+            // 生成用户ID
+            currentUser.id = generateUniqueId();
+            currentUser.name = username || '访客' + Math.floor(Math.random() * 1000);
+            
+            // 保存到本地存储
+            localStorage.setItem('tempchat_user', JSON.stringify(currentUser));
+            
+            // 显示群聊创建/加入页面
+            loginScreen.classList.add('hidden');
+            roomScreen.classList.remove('hidden');
+            
+            // 如果是通过链接加入，直接显示加入界面
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('join') === 'true') {
+                setTimeout(() => handleJoinRoom(), 300);
+            }
+        }
+        
+        // 格式化群聊ID输入
+        function formatRoomIdInput() {
+            let value = roomIdInput.value.replace(/\D/g, ''); // 只保留数字
+            if (value.length > 4) {
+                value = value.slice(0, 4);
+            }
+            roomIdInput.value = value;
+        }
+        
+        // 处理创建群聊
+        function handleCreateRoom() {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId || roomId.length !== 4) {
+                showNotification('请输入4位数字作为群聊密码');
+                return;
+            }
+            
+            currentRoomId = roomId;
+            localStorage.setItem('tempchat_room', roomId);
+            isRoomCreator = true;
+            
+            // 初始化PeerJS
+            initPeer();
+            
+            // 显示信令交换页面
+            roomScreen.classList.add('hidden');
+            signalScreen.classList.remove('hidden');
+            
+            // 显示创建者视图
+            showCreatorView();
+        }
+        
+        // 处理加入群聊
+        function handleJoinRoom() {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId || roomId.length !== 4) {
+                showNotification('请输入4位数字作为群聊密码');
+                return;
+            }
+            
+            currentRoomId = roomId;
+            localStorage.setItem('tempchat_room', roomId);
+            isRoomCreator = false;
+            
+            // 初始化PeerJS
+            initPeer();
+            
+            // 显示信令交换页面
+            roomScreen.classList.add('hidden');
+            signalScreen.classList.remove('hidden');
+            
+            // 显示加入者视图
+            showJoinerView();
+        }
+        
+        // 处理返回登录页面
+        function handleBackToLogin() {
+            roomScreen.classList.add('hidden');
+            loginScreen.classList.remove('hidden');
+        }
+        
+        // 初始化PeerJS
+        function initPeer() {
+            // 创建Peer实例
+            peer = new Peer(currentUser.id, {
+                debug: 3
+            });
+            
+            // 监听连接事件
+            peer.on('open', (peerId) => {
+                console.log('Peer connection established with ID:', peerId);
+                currentUser.id = peerId;
+                
+                if (isRoomCreator) {
+                    // 创建者生成房间链接
+                    generateRoomLink();
+                } else {
+                    // 加入者生成连接信息
+                    generateJoinerSignal();
+                }
+            });
+            
+            // 监听连接错误
+            peer.on('error', (err) => {
+                console.error('Peer connection error:', err);
+                if (err.type === 'network') {
+                    showNotification('网络连接错误，请检查网络后重试');
+                } else if (err.type === 'peer-unavailable') {
+                    showNotification('无法连接到对方，请检查连接信息是否正确');
+                } else {
+                    showNotification('连接失败，请刷新页面重试');
+                }
+            });
+            
+            // 监听断开连接
+            peer.on('disconnected', () => {
+                console.log('Peer disconnected');
+                // 尝试重连
+                setTimeout(() => {
+                    peer.reconnect();
+                }, 1000);
+            });
+            
+            // 监听连接关闭
+            peer.on('close', () => {
+                console.log('Peer connection closed');
+            });
+            
+            // 监听传入连接
+            peer.on('connection', handleIncomingConnection);
+            
+            // 监听传入的呼叫
+            peer.on('call', handleIncomingCall);
+        }
+        
+        // 显示创建者视图
+        function showCreatorView() {
+            signalTitle.textContent = '创建群聊';
+            signalSubtitle.textContent = '分享以下链接邀请其他人加入';
+            
+            creatorView.classList.remove('hidden');
+            joinerView.classList.add('hidden');
+            connectingView.classList.add('hidden');
+            
+            waitingRoomId.textContent = currentRoomId;
+        }
+        
+        // 显示加入者视图
+        function showJoinerView() {
+            signalTitle.textContent = '加入群聊';
+            signalSubtitle.textContent = '请按照以下步骤加入群聊';
+            
+            creatorView.classList.add('hidden');
+            joinerView.classList.remove('hidden');
+            connectingView.classList.add('hidden');
+        }
+        
+        // 显示连接中视图
+        function showConnectingView() {
+            creatorView.classList.add('hidden');
+            joinerView.classList.add('hidden');
+            connectingView.classList.remove('hidden');
+        }
+        
+        // 生成房间链接
+        function generateRoomLink() {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const roomLinkUrl = `${baseUrl}?room=${currentRoomId}&join=true`;
+            
+            roomLink.value = roomLinkUrl;
+            
+            // 生成二维码
+            generateQRCode(roomLinkUrl);
+            
+            // 生成创建者连接信息
+            const creatorInfo = JSON.stringify({
+                peerId: currentUser.id,
+                name: currentUser.name,
+                roomId: currentRoomId,
+                timestamp: Date.now()
+            });
+            
+            // 可以将创建者信息也显示出来，方便手动分享
+            console.log('Creator connection info:', creatorInfo);
+        }
+        
+        // 生成二维码
+        function generateQRCode(url) {
+            // 使用Google Charts API生成二维码
+            const qrCodeUrl = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(url)}&choe=UTF-8`;
+            roomQrCode.src = qrCodeUrl;
+        }
+        
+        // 生成加入者连接信息
+        function generateJoinerSignal() {
+            const signal = JSON.stringify({
+                peerId: currentUser.id,
+                name: currentUser.name,
+                roomId: currentRoomId,
+                timestamp: Date.now()
+            });
+            
+            joinerSignal.value = signal;
+        }
+        
+        // 处理连接到创建者
+        function handleConnectToCreator() {
+            const creatorSignalText = creatorSignal.value.trim();
+            if (!creatorSignalText) {
+                showNotification('请粘贴创建者的连接信息');
+                return;
+            }
+            
+            try {
+                const creatorInfo = JSON.parse(creatorSignalText);
+                
+                if (creatorInfo.roomId !== currentRoomId) {
+                    showNotification('群聊ID不匹配，请检查输入的连接信息');
+                    return;
+                }
+                
+                // 显示连接中视图
+                showConnectingView();
+                
+                // 连接到创建者
+                connectToPeer(creatorInfo.peerId, creatorInfo.name);
+                
+            } catch (error) {
+                console.error('Error parsing creator signal:', error);
+                showNotification('连接信息格式错误，请重新粘贴');
+            }
+        }
+        
+        // 处理传入连接
+        function handleIncomingConnection(conn) {
+            console.log('Incoming connection from:', conn.peer);
+            
+            // 验证房间ID
+            if (conn.metadata?.roomId !== currentRoomId) {
+                console.warn('Connection from different room, closing:', conn.peer);
+                conn.close();
+                return;
+            }
+            
+            // 接受连接
+            conn.on('open', () => {
+                console.log('Connection established with:', conn.peer);
+                
+                // 存储连接
+                connections[conn.peer] = conn;
+                
+                // 发送用户信息
+                conn.send({
+                    type: 'user_info',
+                    data: {
+                        id: currentUser.id,
+                        name: currentUser.name,
+                        roomId: currentRoomId
+                    }
+                });
+                
+                // 更新在线人数
+                updateOnlineCount(Object.keys(connections).length + 1);
+                
+                // 如果是创建者，检查是否有新用户加入
+                if (isRoomCreator) {
+                    addSystemMessage(`${conn.metadata?.name || '用户'} 加入了群聊`);
+                    
+                    // 如果是第一个加入的用户，自动进入聊天界面
+                    if (Object.keys(connections).length === 1) {
+                        setTimeout(() => {
+                            signalScreen.classList.add('hidden');
+                            chatScreen.classList.remove('hidden');
+                            currentRoomIdDisplay.textContent = currentRoomId;
+                            currentRoomDisplay.textContent = currentRoomId;
+                        }, 1000);
+                    }
+                }
+            });
+            
+            // 监听消息
+            conn.on('data', handleIncomingMessage);
+            
+            // 监听连接关闭
+            conn.on('close', () => {
+                console.log('Connection closed with:', conn.peer);
+                delete connections[conn.peer];
+                updateOnlineCount(Object.keys(connections).length + 1);
+                addSystemMessage(`${conn.metadata?.name || '用户'} 离开了群聊`);
+            });
+            
+            // 监听连接错误
+            conn.on('error', (err) => {
+                console.error('Connection error with:', conn.peer, err);
+                delete connections[conn.peer];
+                updateOnlineCount(Object.keys(connections).length + 1);
+            });
+        }
+        
+        // 连接到其他对等点
+        function connectToPeer(otherPeerId, otherPeerName) {
+            if (connections[otherPeerId] || otherPeerId === peer.id) {
+                return; // 已经连接或连接自己
+            }
+            
+            console.log(`Connecting to peer: ${otherPeerId} (${otherPeerName})`);
+            
+            // 创建连接
+            const conn = peer.connect(otherPeerId, {
+                metadata: {
+                    name: currentUser.name,
+                    roomId: currentRoomId
+                }
+            });
+            
+            // 存储连接
+            connections[otherPeerId] = conn;
+            
+            conn.on('open', () => {
+                console.log('Connection established with:', otherPeerId);
+                
+                // 发送用户信息
+                conn.send({
+                    type: 'user_info',
+                    data: {
+                        id: currentUser.id,
+                        name: currentUser.name,
+                        roomId: currentRoomId
+                    }
+                });
+                
+                // 更新在线人数
+                updateOnlineCount(Object.keys(connections).length + 1);
+                
+                // 添加系统消息
+                addSystemMessage(`您已加入群聊`);
+                
+                // 自动进入聊天界面
+                setTimeout(() => {
+                    signalScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
+                    currentRoomIdDisplay.textContent = currentRoomId;
+                    currentRoomDisplay.textContent = currentRoomId;
+                }, 1000);
+            });
+            
+            conn.on('data', handleIncomingMessage);
+            
+            conn.on('close', () => {
+                console.log('Connection closed with:', otherPeerId);
+                delete connections[otherPeerId];
+                updateOnlineCount(Object.keys(connections).length + 1);
+                addSystemMessage(`${otherPeerName} 离开了群聊`);
+            });
+            
+            conn.on('error', (err) => {
+                console.error('Connection error with:', otherPeerId, err);
+                delete connections[otherPeerId];
+                updateOnlineCount(Object.keys(connections).length + 1);
+                showNotification('连接失败，请重试');
+            });
+        }
+        
+        // 处理取消信令
+        function handleCancelSignal() {
+            // 销毁Peer实例
+            if (peer) {
+                peer.destroy();
+                peer = null;
+            }
+            
+            // 清空连接
+            connections = {};
+            
+            // 返回群聊创建/加入页面
+            signalScreen.classList.add('hidden');
+            roomScreen.classList.remove('hidden');
+        }
+        
+        // 处理传入消息
+        function handleIncomingMessage(data) {
+            if (!data || typeof data !== 'object') return;
+            
+            switch (data.type) {
+                case 'user_info':
+                    // 更新连接的元数据
+                    if (connections[data.data.id]) {
+                        connections[data.data.id].metadata = {
+                            name: data.data.name,
+                            roomId: data.data.roomId
+                        };
+                    }
+                    break;
+                    
+                case 'message':
+                    // 添加消息到聊天界面
+                    addMessage(data.data.sender, data.data.text, false);
+                    break;
+                    
+                case 'call_request':
+                    // 处理视频通话请求
+                    handleCallRequest(data.data);
+                    break;
+                    
+                case 'call_response':
+                    // 处理视频通话响应
+                    handleCallResponse(data.data);
+                    break;
+                    
+                case 'call_end':
+                    // 处理视频通话结束
+                    handleCallEnd(data.data);
+                    break;
+                    
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
+        }
+        
+        // 处理发送消息
+        function handleSendMessage() {
+            const text = messageInput.value.trim();
+            if (!text) return;
+            
+            // 添加消息到聊天界面
+            addMessage(currentUser.name, text, true);
+            
+            // 广播消息给所有连接的用户
+            broadcastMessage({
+                type: 'message',
+                data: {
+                    sender: currentUser.name,
+                    text: text,
+                    timestamp: new Date().toISOString()
+                }
+            });
+            
+            // 清空输入框
+            messageInput.value = '';
+        }
+        
+        // 添加消息到聊天界面
+        function addMessage(sender, text, isSelf) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message-bubble ${isSelf ? 'message-self' : 'message-other'}`;
+            
+            if (!isSelf) {
+                const senderSpan = document.createElement('div');
+                senderSpan.className = 'text-xs mb-1 font-medium';
+                senderSpan.textContent = sender;
+                messageDiv.appendChild(senderSpan);
+            }
+            
+            const textDiv = document.createElement('div');
+            textDiv.textContent = text;
+            messageDiv.appendChild(textDiv);
+            
+            messagesContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        // 添加系统消息
+        function addSystemMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'flex justify-center';
+            
+            const textDiv = document.createElement('div');
+            textDiv.className = 'bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full';
+            textDiv.textContent = text;
+            
+            messageDiv.appendChild(textDiv);
+            messagesContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        // 滚动到底部
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // 广播消息
+        function broadcastMessage(data) {
+            Object.values(connections).forEach(conn => {
+                try {
+                    conn.send(data);
+                } catch (err) {
+                    console.error('Error sending message to:', conn.peer, err);
+                }
+            });
+        }
+        
+        // 更新在线人数
+        function updateOnlineCount(count) {
+            onlineCountDisplay.textContent = count;
+        }
+        
+        // 处理开始视频通话
+        function handleStartVideoCall() {
+            if (isInCall) return;
+            
+            // 请求摄像头和麦克风权限
+            navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            })
+            .then(stream => {
+                localStream = stream;
+                isInCall = true;
+                
+                // 显示视频通话界面
+                chatScreen.classList.add('hidden');
+                videoScreen.classList.remove('hidden');
+                
+                // 添加本地视频
+                addLocalVideo();
+                
+                // 更新通话状态
+                callStatus.textContent = '正在呼叫...';
+                
+                // 发送通话请求
+                broadcastMessage({
+                    type: 'call_request',
+                    data: {
+                        callerId: currentUser.id,
+                        callerName: currentUser.name
+                    }
+                });
+            })
+            .catch(err => {
+                console.error('Error accessing media devices:', err);
+                showNotification('无法访问摄像头或麦克风，请检查权限设置');
+            });
+        }
+        
+        // 处理传入的呼叫
+        function handleIncomingCall(call) {
+            console.log('Incoming call from:', call.peer);
+            
+            // 请求摄像头和麦克风权限
+            navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            })
+            .then(stream => {
+                localStream = stream;
+                isInCall = true;
+                
+                // 显示视频通话界面
+                chatScreen.classList.add('hidden');
+                videoScreen.classList.remove('hidden');
+                
+                // 添加本地视频
+                addLocalVideo();
+                
+                // 接听呼叫
+                call.answer(stream);
+                
+                // 处理呼叫流
+                handleCallStream(call);
+                
+                // 更新通话状态
+                callStatus.textContent = '通话中';
+            })
+            .catch(err => {
+                console.error('Error accessing media devices:', err);
+                showNotification('无法访问摄像头或麦克风，请检查权限设置');
+                
+                // 拒绝呼叫
+                broadcastMessage({
+                    type: 'call_response',
+                    data: {
+                        callerId: call.peer,
+                        accepted: false
+                    }
+                });
+            });
+        }
+        
+        // 处理呼叫流
+        function handleCallStream(call) {
+            call.on('stream', remoteStream => {
+                console.log('Received remote stream from:', call.peer);
+                
+                // 添加远程视频
+                addRemoteVideo(call.peer, remoteStream);
+            });
+            
+            call.on('close', () => {
+                console.log('Call closed with:', call.peer);
+                
+                // 移除远程视频
+                removeRemoteVideo(call.peer);
+                
+                // 如果没有其他参与者，结束通话
+                if (document.querySelectorAll('.video-container').length <= 1) {
+                    handleEndCall();
+                }
+            });
+            
+            call.on('error', err => {
+                console.error('Call error with:', call.peer, err);
+                showNotification('通话出错');
+            });
+        }
+        
+        // 处理呼叫请求
+        function handleCallRequest(data) {
+            console.log('Call request from:', data.callerId);
+            
+            // 这里应该显示一个呼叫界面，让用户选择接听或拒绝
+            // 为了简化，我们直接接听呼叫
+            
+            // 请求摄像头和麦克风权限
+            navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            })
+            .then(stream => {
+                localStream = stream;
+                isInCall = true;
+                
+                // 显示视频通话界面
+                chatScreen.classList.add('hidden');
+                videoScreen.classList.remove('hidden');
+                
+                // 添加本地视频
+                addLocalVideo();
+                
+                // 发起呼叫
+                const call = peer.call(data.callerId, stream);
+                
+                // 处理呼叫流
+                handleCallStream(call);
+                
+                // 发送通话响应
+                broadcastMessage({
+                    type: 'call_response',
+                    data: {
+                        callerId: data.callerId,
+                        accepted: true
+                    }
+                });
+                
+                // 更新通话状态
+                callStatus.textContent = '通话中';
+            })
+            .catch(err => {
+                console.error('Error accessing media devices:', err);
+                showNotification('无法访问摄像头或麦克风，请检查权限设置');
+                
+                // 发送拒绝响应
+                broadcastMessage({
+                    type: 'call_response',
+                    data: {
+                        callerId: data.callerId,
+                        accepted: false
+                    }
+                });
+            });
+        }
+        
+        // 处理呼叫响应
+        function handleCallResponse(data) {
+            if (data.callerId !== currentUser.id) return;
+            
+            if (data.accepted) {
+                console.log('Call accepted by:', data.peerId);
+                callStatus.textContent = '通话中';
+            } else {
+                console.log('Call rejected by:', data.peerId);
+                showNotification('对方拒绝了通话');
+            }
+        }
+        
+        // 添加本地视频
+        function addLocalVideo() {
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'video-container';
+            videoContainer.id = `video-${currentUser.id}`;
+            
+            const videoElement = document.createElement('video');
+            videoElement.className = 'video-element';
+            videoElement.autoplay = true;
+            videoElement.muted = true; // 静音本地视频以避免回声
+            videoElement.srcObject = localStream;
+            
+            const userInfo = document.createElement('div');
+            userInfo.className = 'absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs';
+            userInfo.textContent = `${currentUser.name} (我)`;
+            
+            videoContainer.appendChild(videoElement);
+            videoContainer.appendChild(userInfo);
+            videoGrid.appendChild(videoContainer);
+        }
+        
+        // 添加远程视频
+        function addRemoteVideo(peerId, stream) {
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'video-container';
+            videoContainer.id = `video-${peerId}`;
+            
+            const videoElement = document.createElement('video');
+            videoElement.className = 'video-element';
+            videoElement.autoplay = true;
+            videoElement.srcObject = stream;
+            
+            const userInfo = document.createElement('div');
+            userInfo.className = 'absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs';
+            
+            // 尝试获取用户名称
+            let userName = '未知用户';
+            if (connections[peerId] && connections[peerId].metadata) {
+                userName = connections[peerId].metadata.name;
+            }
+            
+            userInfo.textContent = userName;
+            
+            videoContainer.appendChild(videoElement);
+            videoContainer.appendChild(userInfo);
+            videoGrid.appendChild(videoContainer);
+        }
+        
+        // 移除远程视频
+        function removeRemoteVideo(peerId) {
+            const videoContainer = document.getElementById(`video-${peerId}`);
+            if (videoContainer) {
+                videoContainer.remove();
+            }
+        }
+        
+        // 处理结束通话
+        function handleEndCall() {
+            if (!isInCall) return;
+            
+            // 停止本地流
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                localStream = null;
+            }
+            
+            // 停止屏幕共享流
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                screenStream = null;
+            }
+            
+            // 清空视频网格
+            videoGrid.innerHTML = '';
+            
+            // 发送通话结束消息
+            broadcastMessage({
+                type: 'call_end',
+                data: {
+                    callerId: currentUser.id
+                }
+            });
+            
+            // 重置状态
+            isInCall = false;
+            isMicOn = true;
+            isVideoOn = true;
+            isScreenSharing = false;
+            
+            // 更新UI
+            toggleMicBtn.innerHTML = '<i class="fa fa-microphone"></i>';
+            toggleVideoBtn.innerHTML = '<i class="fa fa-video-camera"></i>';
+            toggleScreenBtn.innerHTML = '<i class="fa fa-desktop"></i>';
+            
+            // 返回聊天界面
+            videoScreen.classList.add('hidden');
+            chatScreen.classList.remove('hidden');
+            
+            // 添加系统消息
+            addSystemMessage('视频通话已结束');
+        }
+        
+        // 处理通话结束消息
+        function handleCallEnd(data) {
+            if (data.callerId === currentUser.id) return;
+            
+            // 移除远程视频
+            removeRemoteVideo(data.callerId);
+            
+            // 如果没有其他参与者，结束通话
+            if (document.querySelectorAll('.video-container').length <= 1) {
+                handleEndCall();
+            }
+        }
+        
+        // 处理切换麦克风
+        function handleToggleMic() {
+            if (!localStream) return;
+            
+            const audioTracks = localStream.getAudioTracks();
+            if (audioTracks.length > 0) {
+                isMicOn = !isMicOn;
+                audioTracks[0].enabled = isMicOn;
+                
+                // 更新UI
+                toggleMicBtn.innerHTML = isMicOn ? 
+                    '<i class="fa fa-microphone"></i>' : 
+                    '<i class="fa fa-microphone-slash"></i>';
+            }
+        }
+        
+        // 处理切换视频
+        function handleToggleVideo() {
+            if (!localStream) return;
+            
+            const videoTracks = localStream.getVideoTracks();
+            if (videoTracks.length > 0) {
+                isVideoOn = !isVideoOn;
+                videoTracks[0].enabled = isVideoOn;
+                
+                // 更新UI
+                toggleVideoBtn.innerHTML = isVideoOn ? 
+                    '<i class="fa fa-video-camera"></i>' : 
+                    '<i class="fa fa-video-camera-slash"></i>';
+            }
+        }
+        
+        // 处理切换屏幕共享
+        function handleToggleScreenShare() {
+            if (!localStream) return;
+            
+            if (!isScreenSharing) {
+                // 请求屏幕共享权限
+                navigator.mediaDevices.getDisplayMedia({
+                    video: true
+                })
+                .then(stream => {
+                    screenStream = stream;
+                    isScreenSharing = true;
+                    
+                    // 替换视频轨道
+                    const videoTrack = localStream.getVideoTracks()[0];
+                    const screenTrack = stream.getVideoTracks()[0];
+                    
+                    // 替换所有连接中的视频轨道
+                    Object.values(peer.connections).forEach(connection => {
+                        connection.forEach(conn => {
+                            if (conn.peerConnection) {
+                                const sender = conn.peerConnection.getSenders().find(s => 
+                                    s.track.kind === videoTrack.kind
+                                );
+                                if (sender) {
+                                    sender.replaceTrack(screenTrack);
+                                }
+                            }
+                        });
+                    });
+                    
+                    // 更新本地视频
+                    const localVideo = document.querySelector(`#video-${currentUser.id} video`);
+                    if (localVideo) {
+                        localVideo.srcObject = stream;
+                    }
+                    
+                    // 更新UI
+                    toggleScreenBtn.innerHTML = '<i class="fa fa-stop"></i>';
+                    
+                    // 监听屏幕共享结束
+                    screenTrack.onended = () => {
+                        // 恢复原始视频轨道
+                        Object.values(peer.connections).forEach(connection => {
+                            connection.forEach(conn => {
+                                if (conn.peerConnection) {
+                                    const sender = conn.peerConnection.getSenders().find(s => 
+                                        s.track.kind === videoTrack.kind
+                                    );
+                                    if (sender) {
+                                        sender.replaceTrack(videoTrack);
+                                    }
+                                }
+                            });
+                        });
+                        
+                        // 更新本地视频
+                        if (localVideo) {
+                            localVideo.srcObject = localStream;
+                        }
+                        
+                        // 重置状态
+                        isScreenSharing = false;
+                        toggleScreenBtn.innerHTML = '<i class="fa fa-desktop"></i>';
+                    };
+                })
+                .catch(err => {
+                    console.error('Error starting screen share:', err);
+                    showNotification('无法共享屏幕');
+                });
+            } else {
+                // 停止屏幕共享
+                if (screenStream) {
+                    screenStream.getTracks().forEach(track => {
+                        track.stop();
+                    });
+                    screenStream = null;
+                }
+                
+                // 状态会在track.onended回调中重置
+            }
+        }
+        
+        // 处理打开设置
+        function handleOpenSettings() {
+            settingsMenu.classList.remove('hidden');
+            setTimeout(() => {
+                settingsPanel.classList.remove('translate-x-full');
+            }, 10);
+            
+            // 设置当前用户名
+            currentUsernameDisplay.textContent = currentUser.name;
+            newUsernameInput.value = currentUser.name;
+        }
+        
+        // 处理关闭设置
+        function handleCloseSettings() {
+            settingsPanel.classList.add('translate-x-full');
+            setTimeout(() => {
+                settingsMenu.classList.add('hidden');
+            }, 300);
+        }
+        
+        // 处理更新用户名
+        function handleUpdateUsername() {
+            const newUsername = newUsernameInput.value.trim();
+            if (!newUsername) {
+                showNotification('请输入有效的用户名');
+                return;
+            }
+            
+            // 更新用户名
+            const oldName = currentUser.name;
+            currentUser.name = newUsername;
+            
+            // 保存到本地存储
+            localStorage.setItem('tempchat_user', JSON.stringify(currentUser));
+            
+            // 更新UI
+            currentUsernameDisplay.textContent = newUsername;
+            
+            // 发送用户信息更新
+            broadcastMessage({
+                type: 'user_info',
+                data: {
+                    id: currentUser.id,
+                    name: currentUser.name,
+                    roomId: currentRoomId
+                }
+            });
+            
+            // 添加系统消息
+            addSystemMessage(`您已将用户名从 ${oldName} 更改为 ${newUsername}`);
+            
+            // 关闭设置菜单
+            handleCloseSettings();
+            
+            showNotification('用户名已更新');
+        }
+        
+        // 处理离开群聊
+        function handleLeaveRoom() {
+            // 断开所有连接
+            Object.values(connections).forEach(conn => {
+                try {
+                    conn.close();
+                } catch (error) {
+                    console.error('Error closing connection:', error);
+                }
+            });
+            connections = {};
+            
+            // 销毁Peer实例
+            if (peer) {
+                try {
+                    peer.destroy();
+                } catch (error) {
+                    console.error('Error destroying peer:', error);
+                }
+                peer = null;
+            }
+            
+            // 清空当前房间ID
+            currentRoomId = '';
+            localStorage.removeItem('tempchat_room');
+            
+            // 返回群聊创建/加入页面
+            chatScreen.classList.add('hidden');
+            roomScreen.classList.remove('hidden');
+            
+            // 清空消息
+            messagesContainer.innerHTML = '';
+            
+            // 添加欢迎消息
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'flex justify-center';
+            const welcomeText = document.createElement('div');
+            welcomeText.className = 'bg-blue-50 text-blue-700 text-xs px-4 py-2 rounded-full';
+            welcomeText.textContent = '欢迎来到群聊！您可以开始发送消息或发起视频通话';
+            welcomeDiv.appendChild(welcomeText);
+            messagesContainer.appendChild(welcomeDiv);
+        }
+        
+        // 显示通知
+        function showNotification(text) {
+            notificationText.textContent = text;
+            notification.classList.remove('hidden');
+            
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // 复制到剪贴板
+        function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showNotification('已复制到剪贴板');
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    fallbackCopyTextToClipboard(text);
+                });
+            } else {
+                fallbackCopyTextToClipboard(text);
+            }
+        }
+        
+        // 备用复制方法
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showNotification('已复制到剪贴板');
+                } else {
+                    showNotification('复制失败，请手动复制');
+                }
+            } catch (err) {
+                console.error('Fallback: Could not copy text: ', err);
+                showNotification('复制失败，请手动复制');
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        // 生成唯一ID
+        function generateUniqueId() {
+            return 'user_' + Math.random().toString(36).substr(2, 9);
+        }
+    </script>
+</body>
+</html>
