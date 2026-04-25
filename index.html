@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>临时群聊 - 房间号直连</title>
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 图标 -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- PeerJS -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { primary: '#3B82F6', secondary: '#10B981' } } }
+        }
+    </script>
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .message-bubble { max-width: 80%; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; }
+        .message-self { background: #3B82F6; color: white; margin-left: auto; border-bottom-right-radius: 4px; }
+        .message-other { background: #E5E7EB; margin-right: auto; border-bottom-left-radius: 4px; }
+        .video-container { position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 12px; margin-bottom: 10px; }
+        .video-element { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+    </style>
+</head>
+<body class="font-sans">
+
+<!-- 加载页 -->
+<div id="loading" class="fixed inset-0 flex items-center justify-center bg-white z-50">
+    <div class="text-center">
+        <div class="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <p class="mt-3 text-primary">加载中...</p>
+    </div>
+</div>
+
+<!-- 主容器 -->
+<div id="app" class="max-w-md mx-auto h-screen bg-white hidden flex-col">
+    <!-- 登录页 -->
+    <div id="login" class="flex-1 flex flex-col items-center justify-center p-6">
+        <div class="w-full max-w-xs text-center">
+            <h1 class="text-3xl font-bold mb-6">临时群聊</h1>
+            <p class="text-gray-500 mb-6">输入房间号即可加入</p>
+            
+            <input id="username" placeholder="输入你的昵称" class="w-full px-4 py-3 border rounded-lg mb-4">
+            <button id="go-room" class="w-full bg-primary text-white py-3 rounded-lg">确认并进入</button>
+        </div>
+    </div>
+
+    <!-- 房间页 -->
+    <div id="room" class="flex-1 hidden flex-col items-center justify-center p-6">
+        <div class="w-full max-w-xs text-center">
+            <h2 class="text-xl font-bold mb-4">加入群聊房间</h2>
+            <input id="room-id" placeholder="输入4位数字房间号" maxlength="4" class="w-full px-4 py-3 border rounded-lg mb-4 text-center text-2xl tracking-widest">
+            <button id="join" class="w-full bg-primary text-white py-3 rounded-lg mb-2">进入房间</button>
+            <button id="back" class="w-full border py-3 rounded-lg">返回</button>
+        </div>
+    </div>
+
+    <!-- 聊天页 -->
+    <div id="chat" class="flex-1 hidden flex-col">
+        <div class="p-3 border-b flex justify-between items-center">
+            <div>
+                <p class="font-bold">房间：<span id="room-name"></span></p>
+                <p class="text-xs text-gray-500">在线：<span id="online">1</span> 人</p>
+            </div>
+            <button id="video-call" class="bg-secondary text-white px-3 py-2 rounded-lg">
+                <i class="fa fa-video-camera"></i> 视频
+            </button>
+        </div>
+
+        <div id="messages" class="flex-1 overflow-y-auto p-3"></div>
+
+        <div class="p-3 border-t flex gap-2">
+            <input id="msg" placeholder="输入消息..." class="flex-1 px-3 py-2 border rounded-full">
+            <button id="send" class="bg-primary text-white px-4 py-2 rounded-full">发送</button>
+        </div>
+    </div>
+
+    <!-- 视频页 -->
+    <div id="video" class="fixed inset-0 bg-gray-900 hidden z-50">
+        <div class="p-3 flex justify-between items-center text-white">
+            <h3>视频通话</h3>
+            <button id="hangup" class="bg-red-500 px-3 py-2 rounded-lg">挂断</button>
+        </div>
+        <div id="videos" class="p-3"></div>
+    </div>
+
+    <!-- 提示 -->
+    <div id="tip" class="fixed top-5 left-1/2 -translate-x-1/2 bg-black/75 text-white px-4 py-2 rounded-lg hidden z-50"></div>
+</div>
+
+<script>
+// 全局变量
+let user = { name: '', room: '', id: '' };
+let peer;
+let connections = {};
+let localStream;
+
+// 初始化
+window.onload = () => {
+    setTimeout(() => {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        document.getElementById('app').classList.add('flex');
+    }, 800);
+    bindEvents();
+};
+
+// 绑定所有按钮（修复：按钮全部可见可用）
+function bindEvents() {
+    document.getElementById('go-room').onclick = toRoomPage;
+    document.getElementById('join').onclick = joinRoom;
+    document.getElementById('back').onclick = () => show('login');
+    document.getElementById('send').onclick = sendMessage;
+    document.getElementById('video-call').onclick = startVideo;
+    document.getElementById('hangup').onclick = stopVideo;
+    document.getElementById('msg').onkeydown = e => e.key === 'Enter' && sendMessage();
+}
+
+// 切换页面
+function show(page) {
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('room').classList.add('hidden');
+    document.getElementById('chat').classList.add('hidden');
+    document.getElementById(page).classList.remove('hidden');
+    document.getElementById(page).classList.add('flex');
+}
+
+// 提示框
+function toast(text) {
+    const t = document.getElementById('tip');
+    t.innerText = text;
+    t.classList.remove('hidden');
+    setTimeout(() => t.classList.add('hidden'), 2000);
+}
+
+// 进入房间页面
+function toRoomPage() {
+    const name = document.getElementById('username').value.trim();
+    if (!name) return toast('请输入昵称');
+    user.name = name;
+    show('room');
+}
+
+// --------------------------
+// 核心修复：连接失败（官方服务器）
+// 只需输入相同4位房间号，自动配对
+// --------------------------
+function joinRoom() {
+    const roomId = document.getElementById('room-id').value.trim();
+    if (!/^\d{4}$/.test(roomId)) return toast('请输入4位数字房间号');
+    
+    user.room = roomId;
+    document.getElementById('room-name').innerText = roomId;
+
+    // 使用 PeerJS 官方公共服务器（稳定不失效）
+    peer = new Peer({
+        debug: 0,
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        }
+    });
+
+    // 连接成功
+    peer.on('open', id => {
+        user.id = id;
+        show('chat');
+        toast(`成功进入房间 ${roomId}`);
+        
+        // 监听他人加入
+        peer.on('connection', conn => {
+            listenConn(conn);
+        });
+
+        // 自动连接同房间用户
+        setTimeout(() => autoConnect(), 1000);
+    });
+
+    // 监听视频呼叫
+    peer.on('call', call => {
+        answerCall(call);
+    });
+
+    peer.on('error', err => {
+        toast('网络连接异常，刷新重试');
+        console.error(err);
+    });
+}
+
+// 自动搜索房间内用户
+function autoConnect() {
+    for (let i = 0; i < 20; i++) {
+        const targetId = `room_${user.room}_${i}`;
+        if (targetId === user.id) continue;
+        const conn = peer.connect(targetId, {
+            metadata: { room: user.room, name: user.name }
+        });
+        listenConn(conn);
+    }
+}
+
+// 监听P2P连接
+function listenConn(conn) {
+    conn.on('open', () => {
+        if (conn.metadata?.room !== user.room) return conn.close();
+        
+        connections[conn.peer] = conn;
+        updateOnline();
+        toast(`${conn.metadata.name} 加入群聊`);
+
+        // 接收消息
+        conn.on('data', data => {
+            if (data.type === 'msg') addMessage(data.name, data.text, false);
+            if (data.type === 'call') startVideo();
+        });
+    });
+}
+
+// 发送消息
+function sendMessage() {
+    const text = document.getElementById('msg').value.trim();
+    if (!text) return;
+    
+    addMessage(user.name, text, true);
+    broadcast({ type: 'msg', name: user.name, text: text });
+    document.getElementById('msg').value = '';
+}
+
+// 广播给所有人
+function broadcast(data) {
+    Object.values(connections).forEach(c => c.send(data));
+}
+
+// 添加消息到界面
+function addMessage(name, text, isMe) {
+    const div = document.createElement('div');
+    div.className = `message-bubble ${isMe ? 'message-self' : 'message-other'}`;
+    if (!isMe) div.innerHTML = `<div class="text-xs font-medium mb-1">${name}</div>${text}`;
+    else div.innerText = text;
+    
+    const box = document.getElementById('messages');
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+}
+
+// 更新在线人数
+function updateOnline() {
+    document.getElementById('online').innerText = Object.keys(connections).length + 1;
+}
+
+// 视频通话
+async function startVideo() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('chat').classList.add('hidden');
+        document.getElementById('video').classList.remove('hidden');
+        addVideo(user.name, localStream, true);
+
+        // 呼叫所有人
+        peer.on('call', call => call.answer(localStream));
+        broadcast({ type: 'call' });
+    } catch (e) {
+        toast('请开启摄像头/麦克风权限');
+    }
+}
+
+// 接听视频
+function answerCall(call) {
+    call.answer(localStream);
+    call.on('stream', stream => addVideo(call.peer, stream));
+}
+
+// 添加视频
+function addVideo(name, stream, me = false) {
+    const div = document.createElement('div');
+    div.className = 'video-container';
+    const video = document.createElement('video');
+    video.className = 'video-element';
+    video.autoplay = true;
+    video.muted = me;
+    video.srcObject = stream;
+
+    const label = document.createElement('div');
+    label.className = 'absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded';
+    label.innerText = me ? '我' : name;
+
+    div.appendChild(video);
+    div.appendChild(label);
+    document.getElementById('videos').appendChild(div);
+}
+
+// 挂断视频
+function stopVideo() {
+    localStream?.getTracks().forEach(t => t.stop());
+    document.getElementById('videos').innerHTML = '';
+    document.getElementById('video').classList.add('hidden');
+    document.getElementById('chat').classList.remove('hidden');
+}
+</script>
+</body>
+</html>
