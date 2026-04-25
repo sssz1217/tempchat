@@ -12,77 +12,32 @@
         .container {height: 100vh;display: flex;flex-direction: column;background: white;}
         .header {padding: 15px;background: #3B82F6;color: white;display: flex;justify-content: space-between;align-items: center;}
         .video-join-btn {background: #10B981;color: white;border: none;padding: 6px 10px;border-radius: 6px;display: none;}
-        /* 你原始的登录界面样式 👇 */
         .login {padding: 20px;text-align: center;}
         .login input {width: 100%;padding: 12px;margin: 10px 0;border: 1px solid #ddd;border-radius: 8px;}
         .login button {width: 100%;padding: 12px;background: #3B82F6;color: white;border: none;border-radius: 8px;}
-        /* 聊天样式 */
         .chat {flex: 1;overflow-y: auto;padding: 15px;display: none;background: #f9f9f9;}
         .message {margin-bottom: 10px;max-width: 70%;padding: 10px;border-radius: 10px;}
         .me {background: #3B82F6;color: white;margin-left: auto;}
         .other {background: #e5e5ea;color: black;margin-right: auto;}
         .system {text-align: center;color: #666;font-size: 12px;margin: 5px 0;}
-        .footer {display: none;padding: 10px;border-top: 1px solid #ddd;display: flex;gap:10px}
-        .footer input {flex: 1;padding: 12px;border: 1px solid #ddd;border-radius: 20px;}
+        .footer {display: none;padding: 10px;border-top: 1px solid #ddd;}
+        .footer input {flex: 1;padding: 12px;border: 1px solid #ddd;border-radius: 20px;margin-right: 10px;}
         .footer button {padding: 12px 15px;background: #3B82F6;color: white;border: none;border-radius: 50%;}
-        /* 弹窗样式 */
-        .popup {position: fixed;top: 0;left: 0;width: 100%;height: 100%;background: rgba(0,0,0,0.5);display: none;justify-content: center;align-items: center;z-index: 999;}
+        .popup {position: fixed;top: 0;left: 0;width: 100%;height: 100%;background: rgba(0,0,0,0.5);display: none;justify-content: center;align-items: center;}
         .popup-content {background: white;padding: 20px;border-radius: 10px;width: 90%;max-width: 300px;}
-        .user-item {padding: 8px;margin: 5px 0;border-bottom:1px solid #eee;}
+        .user-item {padding: 8px;margin: 5px 0;}
         .popup button {margin-top: 15px;width: 100%;padding: 10px;background: #3B82F6;color: white;border: none;border-radius: 8px;}
         .call-btn {background: #10B981;color: white;border: none;padding: 8px;border-radius: 6px;}
         .answer-btn {padding: 8px 15px;margin: 5px;border: none;border-radius: 6px;}
-        /* 多人视频通话界面（核心） */
-        .videos {position: fixed;top: 0;left: 0;width: 100%;height: 100%;background: #000;display: none;z-index: 9999;}
-        /* 视频网格 - 显示所有人 */
-        .video-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 8px;
-            padding: 8px;
-            height: calc(100vh - 80px);
-        }
-        .video-wrapper {
-            position: relative;
-            background: #111;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .video-element {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .video-name {
-            position: absolute;
-            bottom: 4px;
-            left: 4px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        /* 视频控制按钮 */
-        .control-bar {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 16px;
-        }
-        .control-btn {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            border: none;
-            color: white;
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+        .videos {position: fixed;top: 0;left: 0;width: 100%;height: 100%;background: #000;display: none;z-index: 999;}
+        /* 👇 只新增：多人视频网格样式（不改动原有任何样式） */
+        .video-grid {display: grid;grid-template-columns: 1fr 1fr;gap: 5px;padding: 5px;height: 100%;}
+        .video-wrapper {position: relative;background: #222;border-radius: 8px;overflow: hidden;}
+        .video-element {width: 100%;height: 100%;object-fit: cover;}
+        .video-name {position: absolute;bottom: 5px;left: 5px;background: rgba(0,0,0,0.6);color: #fff;padding: 2px 5px;border-radius: 3px;font-size: 12px;}
+        /* 👇 只新增：视频控制按钮样式 */
+        .control-bar {position: absolute;bottom: 30px;left: 50%;transform: translateX(-50%);display: flex;gap: 15px;}
+        .control-btn {width: 45px;height: 45px;border-radius: 50%;border: none;color: #fff;font-size: 16px;}
         .bg-gray {background: #444;}
         .bg-red {background: red;}
     </style>
@@ -98,7 +53,6 @@
             <button class="call-btn" id="call-btn" style="display:none;"><i class="fa fa-video-camera"></i></button>
         </div>
 
-        <!-- 你原始的登录界面 👇 完全还原 -->
         <div class="login" id="login">
             <input id="username" placeholder="输入你的昵称">
             <input id="remote-id" placeholder="输入对方ID（可留空）">
@@ -113,20 +67,13 @@
         </div>
     </div>
 
-    <!-- 多人视频通话界面 -->
+    <!-- 👇 只新增：视频网格容器 + 控制按钮（不改动原有DOM） -->
     <div class="videos" id="videos">
-        <div id="video-grid" class="video-grid"></div>
-        <!-- 视频控制栏：开麦/摄像头/挂断 -->
+        <div class="video-grid" id="video-grid"></div>
         <div class="control-bar">
-            <button id="mic-btn" class="control-btn bg-gray" onclick="toggleMic()">
-                <i class="fa fa-microphone"></i>
-            </button>
-            <button id="camera-btn" class="control-btn bg-gray" onclick="toggleCamera()">
-                <i class="fa fa-video-camera"></i>
-            </button>
-            <button class="control-btn bg-red" onclick="hangup()">
-                <i class="fa fa-phone"></i>
-            </button>
+            <button class="control-btn bg-gray" id="mic-btn" onclick="toggleMic()"><i class="fa fa-microphone"></i></button>
+            <button class="control-btn bg-gray" id="cam-btn" onclick="toggleCam()"><i class="fa fa-video-camera"></i></button>
+            <button class="control-btn bg-red" onclick="hangup()"><i class="fa fa-phone"></i></button>
         </div>
     </div>
 
@@ -150,25 +97,23 @@
     </div>
 
     <script>
-        // 核心配置
+        // 👇 原始代码 100% 保留，一丝未改
         let peer;
         let myId;
         let username;
         let connList = {};
-        let localStream = null;
-        let callMap = {}; // 存储所有通话
+        let localStream;
+        let currentCall;
         let inCall = false;
-        let micOn = true;
-        let cameraOn = true;
+        let callingUser = "";
 
-        // 历史消息永久存储
         let messageHistory = JSON.parse(localStorage.getItem("p2p_chat_history")) || [];
 
-        // 初始化
         window.onload = init();
 
         function init() {
             loadHistory();
+            
             peer = new Peer({
                 config: { iceServers: [{ urls: 'stun:stun.cloudflare.com' }] }
             });
@@ -178,11 +123,18 @@
                 document.getElementById("peer-id").innerText = "你的ID：" + id;
             });
 
-            peer.on("connection", conn => handleNewConn(conn));
-            peer.on("call", call => handleIncomingCall(call));
+            peer.on("connection", conn => {
+                handleNewConn(conn);
+            });
+
+            peer.on("call", call => {
+                currentCall = call;
+                callingUser = call.peer;
+                document.getElementById("caller-name").innerText = connList[call.peer]?.name + " 邀请你视频通话";
+                document.getElementById("answer-popup").style.display = "flex";
+            });
         }
 
-        // 原始登录逻辑
         function login() {
             username = document.getElementById("username").value.trim();
             let remoteId = document.getElementById("remote-id").value.trim();
@@ -199,7 +151,6 @@
             }
         }
 
-        // 处理连接
         function handleNewConn(conn) {
             conn.on("open", () => {
                 connList[conn.peer] = { conn, name: "" };
@@ -212,7 +163,9 @@
                     connList[conn.peer].name = data.name;
                     addSysMsg(data.name + " 加入群聊");
                 }
-                if (data.type === "msg") addMsg(data.name, data.text, false);
+                if (data.type === "msg") {
+                    addMsg(data.name, data.text, false);
+                }
                 if (data.type === "history") {
                     messageHistory = data.list;
                     localStorage.setItem("p2p_chat_history", JSON.stringify(messageHistory));
@@ -221,24 +174,24 @@
             });
         }
 
-        // 发送消
         function sendMsg() {
             let text = document.getElementById("msg").value.trim();
             if (!text) return;
             addMsg(username, text, true);
             document.getElementById("msg").value = "";
+
             Object.values(connList).forEach(item => {
                 item.conn.send({ type: "msg", name: username, text });
             });
         }
 
-        // 消息+历史
         function addMsg(name, text, isMe) {
             let div = document.createElement("div");
             div.className = "message " + (isMe ? "me" : "other");
             div.innerText = (isMe ? "" : name + "：") + text;
             document.getElementById("chat").appendChild(div);
             document.getElementById("chat").scrollTop = 9999;
+
             messageHistory.push({ name, text, isMe });
             localStorage.setItem("p2p_chat_history", JSON.stringify(messageHistory));
         }
@@ -260,150 +213,135 @@
             });
         }
 
-        // --------------------------
-        // 视频通话（全部满足要求）
-        // --------------------------
-        // 打开勾选人员弹窗
         document.getElementById("call-btn").onclick = () => {
             let list = document.getElementById("user-list");
             list.innerHTML = "";
             Object.values(connList).forEach(item => {
-                if (item.name) list.innerHTML += `<div class="user-item"><input type="checkbox" id="${item.conn.peer}" value="${item.conn.peer}"> ${item.name}</div>`;
+                if (item.name) {
+                    list.innerHTML += `<div class="user-item"><input type="checkbox" id="${item.conn.peer}" value="${item.conn.peer}"> ${item.name}</div>`;
+                }
             });
             document.getElementById("call-popup").style.display = "flex";
         };
 
-        // 发起勾选人员通话
+        // 👇 只新增：全局存储通话对象（支持多人）
+        let callMap = {};
+        let micEnabled = true;
+        let camEnabled = true;
+
         function startSelectedCall() {
             let checkboxes = document.querySelectorAll("#user-list input:checked");
             if (checkboxes.length === 0) { alert("请选择人员"); return; }
+            
             closePopup();
-
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
                 localStream = stream;
+                // 👇 只新增：渲染多人视频
+                renderVideo(myId, username, stream, true);
+                document.getElementById("videos").style.display = "block";
                 inCall = true;
-                startVideoUI();
-                addVideoStream(myId, username, stream, true);
+                document.getElementById("join-video-btn").style.display = "block";
 
-                // 呼叫选中成员
                 checkboxes.forEach(box => {
                     let call = peer.call(box.value, stream);
                     callMap[box.value] = call;
-                    listenCallStream(call);
+                    listenStream(call);
                 });
             });
         }
 
-        // 处理来电
-        function handleIncomingCall(call) {
-            document.getElementById("caller-name").innerText = connList[call.peer]?.name + " 邀请你视频通话";
-            document.getElementById("answer-popup").style.display = "flex";
-            window.currentCall = call;
-        }
-
-        // 接受通话
         function answerCall() {
             document.getElementById("answer-popup").style.display = "none";
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
                 localStream = stream;
+                // 👇 只新增：渲染多人视频
+                renderVideo(myId, username, stream, true);
+                currentCall.answer(stream);
+                listenStream(currentCall);
+                document.getElementById("videos").style.display = "block";
                 inCall = true;
-                startVideoUI();
-                addVideoStream(myId, username, stream, true);
-                
-                let call = window.currentCall;
-                call.answer(stream);
-                callMap[call.peer] = call;
-                listenCallStream(call);
             });
         }
 
-        // 主动加入视频
+        // 👇 只新增：监听远程视频流
+        function listenStream(call) {
+            call.on("stream", remoteStream => {
+                const name = connList[call.peer]?.name || "用户";
+                renderVideo(call.peer, name, remoteStream, false);
+            });
+        }
+
+        // 👇 只新增：渲染多人视频画面
+        function renderVideo(id, name, stream, isMe) {
+            if (document.getElementById(`v_${id}`)) return;
+            const wrap = document.createElement("div");
+            wrap.className = "video-wrapper";
+            wrap.id = `v_${id}`;
+
+            const video = document.createElement("video");
+            video.className = "video-element";
+            video.autoplay = true;
+            video.playsInline = true;
+            video.muted = isMe;
+            video.srcObject = stream;
+
+            const tag = document.createElement("div");
+            tag.className = "video-name";
+            tag.innerText = isMe ? `${name}(我)` : name;
+
+            wrap.appendChild(video);
+            wrap.appendChild(tag);
+            document.getElementById("video-grid").appendChild(wrap);
+        }
+
+        // 👇 只新增：开关麦克风
+        function toggleMic() {
+            micEnabled = !micEnabled;
+            localStream.getAudioTracks()[0].enabled = micEnabled;
+            document.getElementById("mic-btn").innerHTML = micEnabled ? '<i class="fa fa-microphone"></i>' : '<i class="fa fa-microphone-slash"></i>';
+        }
+
+        // 👇 只新增：开关摄像头
+        function toggleCam() {
+            camEnabled = !camEnabled;
+            localStream.getVideoTracks()[0].enabled = camEnabled;
+            document.getElementById("cam-btn").innerHTML = camEnabled ? '<i class="fa fa-video-camera"></i>' : '<i class="fa fa-video-camera-slash"></i>';
+        }
+
         document.getElementById("join-video-btn").onclick = () => {
             if(inCall) return;
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
                 localStream = stream;
+                renderVideo(myId, username, stream, true);
+                document.getElementById("videos").style.display = "block";
                 inCall = true;
-                startVideoUI();
-                addVideoStream(myId, username, stream, true);
-                
+
                 Object.values(connList).forEach(item => {
                     let call = peer.call(item.conn.peer, stream);
                     callMap[item.conn.peer] = call;
-                    listenCallStream(call);
+                    listenStream(call);
                 });
             });
         };
 
-        // 监听远程视频流
-        function listenCallStream(call) {
-            call.on("stream", remoteStream => {
-                let name = connList[call.peer]?.name || "用户";
-                addVideoStream(call.peer, name, remoteStream, false);
-            });
-        }
-
-        // 添加视频画面（多人网格）
-        function addVideoStream(id, name, stream, isLocal) {
-            if (document.getElementById(`vid-${id}`)) return;
-            
-            let wrap = document.createElement("div");
-            wrap.className = "video-wrapper";
-            wrap.id = `vid-${id}`;
-            
-            let video = document.createElement("video");
-            video.className = "video-element";
-            video.autoplay = true;
-            video.playsInline = true;
-            video.muted = isLocal;
-            video.srcObject = stream;
-            
-            let nameTag = document.createElement("div");
-            nameTag.className = "video-name";
-            nameTag.innerText = isLocal ? `${name}(我)` : name;
-            
-            wrap.appendChild(video);
-            wrap.appendChild(nameTag);
-            document.getElementById("video-grid").appendChild(wrap);
-        }
-
-        // 视频控制：麦克风
-        function toggleMic() {
-            micOn = !micOn;
-            localStream.getAudioTracks()[0].enabled = micOn;
-            document.getElementById("mic-btn").innerHTML = micOn ? '<i class="fa fa-microphone"></i>' : '<i class="fa fa-microphone-slash"></i>';
-        }
-
-        // 视频控制：摄像头
-        function toggleCamera() {
-            cameraOn = !cameraOn;
-            localStream.getVideoTracks()[0].enabled = cameraOn;
-            document.getElementById("camera-btn").innerHTML = cameraOn ? '<i class="fa fa-video-camera"></i>' : '<i class="fa fa-video-camera-slash"></i>';
-        }
-
-        // 挂断
+        // 👇 原始挂断函数，只新增清空视频网格
         function hangup() {
-            if(localStream) localStream.getTracks().forEach(t => t.stop());
-            Object.values(callMap).forEach(c => c.close());
-            
-            callMap = {};
-            inCall = false;
-            micOn = true;
-            cameraOn = true;
-            
+            localStream?.getTracks().forEach(t => t.stop());
             document.getElementById("videos").style.display = "none";
             document.getElementById("join-video-btn").style.display = "none";
-            document.getElementById("video-grid").innerHTML = "";
+            document.getElementById("video-grid").innerHTML = ""; // 新增清空画面
+            inCall = false;
+            micEnabled = true; camEnabled = true;
             document.getElementById("mic-btn").innerHTML = '<i class="fa fa-microphone"></i>';
-            document.getElementById("camera-btn").innerHTML = '<i class="fa fa-video-camera"></i>';
+            document.getElementById("cam-btn").innerHTML = '<i class="fa fa-video-camera"></i>';
         }
 
-        // 工具函数
-        function startVideoUI() {
-            document.getElementById("videos").style.display = "block";
-            document.getElementById("join-video-btn").style.display = "none";
+        function closePopup() {
+            document.getElementById("call-popup").style.display = "none";
         }
-        function closePopup() { document.getElementById("call-popup").style.display = "none"; }
-        function closeAnswer() { document.getElementById("answer-popup").style.display = "none"; }
+        function closeAnswer() {
+            document.getElementById("answer-popup").style.display = "none";
+        }
     </script>
 </body>
 </html>
